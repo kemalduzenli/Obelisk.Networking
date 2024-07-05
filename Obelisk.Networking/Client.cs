@@ -3,8 +3,6 @@ using System.Net.Sockets;
 
 namespace Obelisk.Networking
 {
-
-    
     public class Client : Connection
     {
         private Dictionary<byte, Action<Message>> messageListener = new();
@@ -14,6 +12,9 @@ namespace Obelisk.Networking
 
         public Client() : base() { }
         public Client(Socket socket) : base(socket) { }
+
+        public event Action onConnect;
+        public event Action onDisconnect;
 
         internal Message Receive()
         {
@@ -31,6 +32,8 @@ namespace Obelisk.Networking
             this.ip = ip;
             this.port = port;
 
+            onConnect.Invoke();
+
             while (isActive)
             {
                 try
@@ -45,6 +48,8 @@ namespace Obelisk.Networking
                     break;
                 }
             }
+
+            onDisconnect.Invoke();
 
             Close();    
         }

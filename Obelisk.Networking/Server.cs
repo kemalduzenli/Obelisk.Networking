@@ -14,6 +14,12 @@ namespace Obelisk.Networking
             messageListener = new Dictionary<byte, Action<Message, Client>>();
         }
 
+        public event Action<Client> onClientConnect;
+        public event Action<Client> onClientDisconnect;
+
+        public void AddListener(byte channel, Action<Message, Client> callback) =>
+            messageListener[channel] = callback;
+
         public void Start(string ip, ushort port)
         {
             isActive = true;
@@ -30,7 +36,7 @@ namespace Obelisk.Networking
 
                 try
                 {
-                    HandleClient(newClient);
+                    Task.Run(() => HandleClient(newClient));
                 }
                 catch (Exception ex)
                 {
@@ -51,10 +57,15 @@ namespace Obelisk.Networking
 
         private void HandleClient(Client client)
         {
+            onClientConnect?.Invoke(client);
+
             clients.Add(client);  
 
             while (client.isActive)
             {
+                if(!isActive)
+                    break;
+
                 try
                 {
                     Message msg = client.Receive();
@@ -67,6 +78,8 @@ namespace Obelisk.Networking
                     break;
                 }
             }
+
+            onClientDisconnect?.Invoke(client);
 
             client.Close();
 
