@@ -53,3 +53,21 @@ Obelisk's Server and Client classes both have several events to allow you to run
 For example, you'll likely want your server to spawn a player object when a client connects and destroy it again when they disconnect. You can do this by subscribing your spawn and despawn methods to the <b>OnClientConnected</b> and <b>OnClientDisconnected</b> events.
 
 For a complete list of available events, check out the server events and client events.
+
+```csharp
+server.OnClientConnected += (Connection conn) =>
+{
+    Debug.Log($"New Connection[{conn.Id}] is connected");
+}
+```
+
+```csharp
+server.OnClientDisconnected += (Connection conn) =>
+{
+    Debug.Log($"Connection[{conn.Id}] is disconnected");
+}
+```
+
+
+
+
