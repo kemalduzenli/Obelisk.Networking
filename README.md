@@ -111,7 +111,7 @@ server.Send(<toClientId>, packet); // Sends the message to a specific client
 
 Make sure to replace <toClientId> with the ID of the client you want to send the packet to, or who you don't want to sent the packet to if you're using the <b>Send(packet)</b> method.
 
-## Handling the Message
+## Handling the Packet
 
 Use <b>OnPacket</b> event to detect incoming packets on Server and Clients.
 
