@@ -1,63 +1,91 @@
-﻿using System.Net;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace Obelisk.Networking
 {
-    public class Client : Connection
+    public class Client : Peer
     {
-        private Dictionary<byte, Action<Message>> messageListener = new();
+        public byte Id;
+        private readonly Socket socket;
 
-        public ushort Id;
-        private ushort receiveBufferLenght = 1024;
+        public event Action<Packet> OnPacket;
+        public event Action OnDisconnect;
 
-        public Client() : base() { }
-        public Client(Socket socket) : base(socket) { }
+        public string Ip { get; private set; }
+        public ushort Port { get; private set; }
 
-        public event Action onConnect;
-        public event Action onDisconnect;
+        public ConnectionState State { get; internal set; }
 
-        internal Message Receive()
+        private bool isPendingPacket;
+
+        public Client()
         {
-            byte[] buffer = new byte[receiveBufferLenght];
-
-            int bytesRead = _socket.Receive(buffer);
-
-            return Message.Load(buffer, bytesRead);
+            socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         }
 
-        public void Connect(string ip, ushort port)
+        public void Connect(ushort port, string ip = "127.0.0.1")
         {
-            isActive = true;
+            Ip = ip;
+            Port = port;
 
-            this.ip = ip;
-            this.port = port;
+            IPAddress ipAddress = IPAddress.Parse(ip);
 
-            onConnect.Invoke();
+            IPEndPoint endPoint = new IPEndPoint(ipAddress, port);
 
-            while (isActive)
+            socket.Connect(endPoint);
+        }
+
+        public override void Send(Packet packet) =>
+            socket.Send(packet.ToBytes(), packet.size + sizeof(ushort), SocketFlags.None);
+
+        public override void Update()
+        {
+            try
             {
-                try
+                while (socket.Available >= sizeof(ushort) && !isPendingPacket)
                 {
-                    Message msg = Receive();
+                    byte[] headerBuffer = new byte[sizeof(ushort)];
+                    socket.Receive(headerBuffer, SocketFlags.None);
+                    ushort size = BitConverter.ToUInt16(headerBuffer, 0);
 
-                    if (messageListener.ContainsKey(msg.channelId))
-                        messageListener[msg.channelId](msg);
-                }
-                catch (Exception)
-                {
-                    break;
+                    PendingPacket(size);
                 }
             }
-
-            onDisconnect.Invoke();
-
-            Close();    
+            catch
+            {
+                State = ConnectionState.Disconnect;
+                OnDisconnect?.Invoke();
+            }
         }
 
-        public void Disconnect()
+        private async void PendingPacket(ushort size)
         {
-            _socket.Disconnect(false);
-            Close();
+            isPendingPacket = true;
+
+            byte[] buffer = new byte[size];
+            await socket.ReceiveAsync(buffer, SocketFlags.None);
+
+            Packet packet = Packet.FromBuffer(buffer, size);
+
+            if(packet.type != 0) 
+                OnPacket?.Invoke(packet);
+            else if(State == ConnectionState.Pending)
+            {
+                Id = packet.ReadByte(); 
+                State = ConnectionState.OK;
+            }
+
+            isPendingPacket = false;
+        }
+
+        public override void Close()
+        {
+            socket.Close();
         }
     }
 }

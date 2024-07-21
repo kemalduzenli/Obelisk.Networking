@@ -1,89 +1,105 @@
-﻿using System.Net;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace Obelisk.Networking
 {
-    public class Server : Connection
+    public class Server : Peer
     {
-        private List<Client> clients;
-        private Dictionary<byte, Action<Message, Client>> messageListener;
+        private readonly Socket socket;
+        public ushort Port { get; private set; }
 
-        public Server() : base() 
+        public readonly Dictionary<byte, Connection> Connections;
+
+        public event Action<Connection> OnClientConnected;
+        public event Action<Connection> OnClientDisconnected;
+
+        public event Action<Connection, Packet> OnPacket;
+
+        private bool pendingConnection;
+        private byte idCounter;
+
+        public Server() 
         {
-            clients = new List<Client>();   
-            messageListener = new Dictionary<byte, Action<Message, Client>>();
+            socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            Connections = new();
         }
 
-        public event Action<Client> onClientConnect;
-        public event Action<Client> onClientDisconnect;
-
-        public void AddListener(byte channel, Action<Message, Client> callback) =>
-            messageListener[channel] = callback;
-
-        public void Start(string ip, ushort port)
+        public void Start(ushort port, ushort maxConnectedClientCount = 5, IPAddress ipAddress = null)
         {
-            isActive = true;
+            Port = port;
 
-            this.ip = ip;
-            this.port = port;
+            if (ipAddress == null)
+                ipAddress = IPAddress.Parse("127.0.0.1");
 
-            _socket.Bind(Utils.GetEndPoint(ip, port));
-            _socket.Listen(10);
+            IPEndPoint endPoint = new IPEndPoint(ipAddress, Port);
 
-            while (isActive)
-            {
-                Client newClient = new Client(_socket.Accept());
-
-                try
-                {
-                    Task.Run(() => HandleClient(newClient));
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine(ex.ToString());
-                }
-            } 
-
-            _socket.Close();
+            socket.Bind(endPoint);
+            socket.Listen(maxConnectedClientCount);
         }
 
-        public void SendAll(Message message)
+        public override void Send(Packet packet)
         {
-            byte[] buffer = message.GetBuffer();
-
-            foreach (Client client in clients)
-                client._socket.Send(buffer);
+            foreach (Connection connection in Connections.Values)
+                connection.Send(packet);
         }
 
-        private void HandleClient(Client client)
+        public void Send(Connection connection, Packet packet) =>
+            connection.Send(packet);
+
+        public void Send(byte connectionId, Packet packet)
         {
-            onClientConnect?.Invoke(client);
-
-            clients.Add(client);  
-
-            while (client.isActive)
-            {
-                if(!isActive)
-                    break;
-
-                try
-                {
-                    Message msg = client.Receive();
-
-                    if (messageListener.ContainsKey(msg.channelId))
-                        messageListener[msg.channelId](msg, client);
-                }
-                catch (Exception)
-                {
-                    break;
-                }
-            }
-
-            onClientDisconnect?.Invoke(client);
-
-            client.Close();
-
-            clients.Remove(client);
+            if(Connections.TryGetValue(connectionId, out Connection connection)) 
+                connection.Send(packet);
         }
+        
+        public override void Update()
+        {
+            if (!pendingConnection)
+                PendingConnection();
+
+            foreach(Connection connection in Connections.Values)
+                switch(connection.State)
+                {
+                    case ConnectionState.OK:
+                        connection.Update();
+                        break;
+
+                    case ConnectionState.Disconnect:
+                        Connections.Remove(connection.Id);
+                        OnClientDisconnected?.Invoke(connection);
+                        break;
+                }
+        }
+
+        private async void PendingConnection()
+        {
+            pendingConnection = true;
+
+            Socket newSocket = await socket.AcceptAsync();
+
+            Connection connection = new Connection(idCounter++, newSocket);
+            connection.State = ConnectionState.Pending;
+
+            Packet packet = Packet.Create(0);
+            packet.WriteByte(connection.Id);
+            connection.Send(packet);
+
+            connection._onPacket += (Packet _packet) => OnPacket(connection, _packet);
+
+            connection.State = ConnectionState.OK;
+            Connections.Add(connection.Id, connection);    
+
+            OnClientConnected?.Invoke(connection);
+
+            pendingConnection = false;
+        }
+
+        public override void Close() =>
+            socket.Close();
     }
 }

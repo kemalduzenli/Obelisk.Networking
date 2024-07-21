@@ -1,52 +1,69 @@
 ﻿using System;
-using System.Net;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Sockets;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace Obelisk.Networking
 {
+    public enum ConnectionState : byte { Pending, OK, Disconnect }
 
-
-    public abstract class Connection
+    public class Connection : Peer
     {
-        internal static class Utils
+        public byte Id;
+        private readonly Socket socket;
+
+        internal event Action<Packet>? _onPacket;
+
+        public ConnectionState State { get; internal set; }
+
+        private bool isPendingPacket;
+
+        public Connection(byte Id, Socket socket)
         {
-            public static IPEndPoint GetEndPoint(string ip, int port)
+            this.Id = Id;
+            this.socket = socket;
+        }
+        
+        public override void Send(Packet packet) =>
+            socket.Send(packet.ToBytes(), packet.size + sizeof(ushort), SocketFlags.None);
+
+        public override void Update()
+        {
+            try
             {
-                IPHostEntry host = Dns.GetHostEntry(ip);
-                return new IPEndPoint(host.AddressList[0], port);
+                while(socket.Available >= sizeof(ushort) && !isPendingPacket)
+                {
+                    byte[] headerBuffer = new byte[sizeof(ushort)];
+                    socket.Receive(headerBuffer, SocketFlags.None);
+                    ushort size = BitConverter.ToUInt16(headerBuffer, 0);
+
+                    PendingPacket(size);
+                }
+            } 
+            catch 
+            {
+                State = ConnectionState.Disconnect;
             }
         }
 
-        internal Socket _socket { get; private set; }
-
-        public string ip { get; internal set; }
-        public int port { get; internal set; }
-
-        public bool isActive;
-
-        public Connection() =>
-            _socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp); 
-        
-        public void Send(Message message)
+        private async void PendingPacket(ushort size)
         {
-            _socket.Send(message.GetBuffer());
+            isPendingPacket = true;
+
+            byte[] buffer = new byte[size];
+            await socket.ReceiveAsync(buffer, SocketFlags.None);
+
+            Packet packet = Packet.FromBuffer(buffer, size);
+            _onPacket?.Invoke(packet);
+
+            isPendingPacket = false;    
         }
 
-        public void Close()
+        public override void Close()
         {
-            _socket.Close();
-
-            isActive = false;
-        }
-
-        public Connection(Socket socket)
-        {
-            IPEndPoint socketEndPoint = socket.RemoteEndPoint as IPEndPoint; 
-
-            ip = socketEndPoint.Address.ToString(); 
-            port = socketEndPoint.Port;
-
-            _socket = socket;
+            socket.Close();
         }
     }
 }
