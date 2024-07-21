@@ -48,26 +48,89 @@ private void FixedUpdate()
 
 ## Hooking Into Events
 
-Obelisk's Server and Client classes both have several events to allow you to run your own code when various things happen.
+Obelisk's <b>Server</b> and <b>Client</b> classes both have several events to allow you to run your own code when various things happen.
 
 For example, you'll likely want your server to spawn a player object when a client connects and destroy it again when they disconnect. You can do this by subscribing your spawn and despawn methods to the <b>OnClientConnected</b> and <b>OnClientDisconnected</b> events.
 
 For a complete list of available events, check out the server events and client events.
 
+### Examples
+
 ```csharp
 server.OnClientConnected += (Connection conn) =>
 {
     Debug.Log($"New Connection[{conn.Id}] is connected");
-}
+};
 ```
 
 ```csharp
 server.OnClientDisconnected += (Connection conn) =>
 {
     Debug.Log($"Connection[{conn.Id}] is disconnected");
-}
+};
 ```
 
+## Sending Data
 
+In order to send data over the network, it has to be converted to bytes first—you can't just send a string or an int directly. Obelisk provides the <b>Packet</b> struct to make this process really easy.
+
+### Creating a Packet
+The first step of sending a packet is to get an instance of the struct. This is done using the <b>Create</b> method, which requires the packet's an ID (packet.type) as parameters.
+
+```csharp
+Packet packet = Packet.Create(1);
+```
+
+Packet IDs are used to identify what type of packet you're sending, which allows the receiving end to determine how to properly handle it. In the example above, we set the packet ID to 1 (in practice you'd probably want to use an enum for packet IDs instead of hard-coding the number).
+
+### Adding Data to the Packet
+
+To write data to our packet, we can simply call the Add method for the type we want to write. For examples:
+
+```csharp
+packet.WriteInt(31);
+packet.WriteFloat(31.62f);
+packet.WriteBool(true);
+packet.WriteByte(1);
+
+packet.WriteString("Hello world");
+
+packet.WriteBytes(new byte[2] { 1, 2 });
+```
+
+### Sending the Packet
+
+Once you've added the data you want to include in your packet, it's time to send it. Clients have only one Send method, while servers have Send (which has an overload as well).
+
+```csharp
+client.Send(packet); // Sends the message to the server
+
+server.Send(packet); // Sends the message to all connected clients
+server.Send(<toClientId>, packet); // Sends the message to a specific client
+```
+
+Make sure to replace <toClientId> with the ID of the client you want to send the packet to, or who you don't want to sent the packet to if you're using the <b>Send(packet)</b> method.
+
+## Handling the Message
+
+Use <b>OnPacket</b> event to detect incoming packets on Server and Clients.
+
+### Use in Server example
+
+```csharp
+server.OnPacket += (Connection conn, Packet packet) =>
+{
+    //TODO
+}; 
+```
+
+### Use in Client example
+
+```csharp
+server.OnPacket += (Packet packet) =>
+{
+    //TODO
+}; 
+```
 
 
