@@ -50,8 +50,6 @@ private void FixedUpdate()
 
 Obelisk's Server and Client classes both have several events to allow you to run your own code when various things happen.
 
-For example, you'll likely want your server to spawn a player object when a client connects and destroy it again when they disconnect. You can do this by subscribing your spawn and despawn methods to the OnClientConnected and ClientDisconnected events.
-
-The Client class's most useful events are probably the ConnectionFailed and Disconnected events, which come in handy for things like returning the player to the main menu when their connection attempt fails or they're disconnected.
+For example, you'll likely want your server to spawn a player object when a client connects and destroy it again when they disconnect. You can do this by subscribing your spawn and despawn methods to the <b>OnClientConnected</b> and <b>OnClientDisconnected</b> events.
 
 For a complete list of available events, check out the server events and client events.
