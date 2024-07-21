@@ -127,7 +127,7 @@ server.OnPacket += (Connection conn, Packet packet) =>
 ### Use in Client example
 
 ```csharp
-server.OnPacket += (Packet packet) =>
+client.OnPacket += (Packet packet) =>
 {
     //TODO
 }; 
